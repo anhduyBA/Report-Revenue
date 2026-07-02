@@ -1,0 +1,34 @@
+=== BAT DAU LAM SACH DU LIEU | 2026-07-01 14:12:45 ===
+
+Da doc: 2500 dong, 8 cot
+
+--- Kiem tra chat luong du lieu THO ---
+Gia tri thieu theo cot:
+InvoiceNo        0
+StockCode        0
+Description      4
+Quantity         0
+InvoiceDate      0
+UnitPrice        0
+CustomerID     651
+Country          0
+dtype: int64
+So dong trung lap hoan toan: 0
+So giao dich la don huy (InvoiceNo bat dau bang 'C'): 49
+So dong Quantity am (thuong la hang tra lai): 51
+So dong UnitPrice <= 0 (bat thuong): 10
+
+Da loai bo 0 dong trung lap
+Da loai bo 10 dong UnitPrice<=0 khong phai don huy
+[Transactions] Hoan tat lam sach -> (2490, 13)
+
+[Products] So san pham duy nhat: 1345
+[Customers] So khach hang duy nhat co CustomerID: 1125
+[Customers] So giao dich KHONG co CustomerID (giu nguyen trong Fact): 641
+
+Da xuat 3 file sach vao: /home/claude/DHV_Groupproject/clean
+  Transactions_clean.csv : (2490, 12)
+  Products_clean.csv     : (1345, 2)
+  Customers_clean.csv    : (1125, 2)
+
+=== HOAN TAT | 2026-07-01 14:12:46 ===
