@@ -111,4 +111,6 @@ Xem chi tiết đầy đủ tại `docs/data_dictionary.xlsx`, gồm 2 sheet:
 
 Dữ liệu trong `clean/` đã sẵn sàng để:
 - **EDA & Visualization Lead:** import vào notebook, vẽ ≥4 biểu đồ nháp cho Milestone 2 (gợi ý: doanh thu theo ngày, top sản phẩm theo Revenue, tỷ lệ đơn hủy, phân bố theo quốc gia).
-- **BI Dashboard Lead:** import vào Power BI, thiết lập quan hệ giữa Transactions (fact) và Products/Customers (dimension), xây DAX measures (Total Revenue, % đơn hủy, Ranking sản phẩm, MoM Growth...).
+- **BI Dashboard Lead:** import vào Power BI, thiết lập quan hệ giữa Transactions (fact) và Products/Customers (dimension), xây DAX measures (Total Revenue, % đơn hủy, Ranking sản phẩm, MoM Growth...)
+
+Link canva: https://www.canva.com/design/DAHONO_zKWY/CmPLrBszic6ZHGlDgBtHMQ/edit
