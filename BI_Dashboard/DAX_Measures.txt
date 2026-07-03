@@ -1,0 +1,247 @@
+/* ============================================================================
+   DHV301 - GROUP PROJECT | Option A: Ban le / Doanh thu
+   BI DASHBOARD LEAD - DAX SCRIPT (copy-paste vao Power BI Desktop)
+   ----------------------------------------------------------------------------
+   Nguon du lieu : clean/Transactions_clean.csv (Fact)
+                   clean/Products_clean.csv     (Dim - san pham)
+                   clean/Customers_clean.csv    (Dim - khach hang)
+   Don vi tien   : GBP (Bang Anh)
+   Khoang tg     : 01/12/2010 - 09/12/2011
+   ----------------------------------------------------------------------------
+   CACH DUNG:
+   1. Import 3 file CSV trong thu muc clean/ vao Power BI.
+   2. Chay muc [0] de tao bang Dim_Date (New table).
+   3. Thiet lap quan he (Model view) theo muc [MODEL] o cuoi file.
+   4. Tao tung measure ben duoi bang: Modeling > New measure -> dan code.
+      (Moi measure la 1 khoi rieng, dan tung cai mot.)
+   ----------------------------------------------------------------------------
+   TONG KET: 15 measure + 2 calculated column + 1 calculated table.
+   - KPI co ban  : 6 (Total Revenue, Total Orders, Total Quantity,
+                      Total Customers, Average Order Value, Median Line Value)
+   - Van hanh    : 3 (Cancelled Orders, Total Orders (All), % Cancelled Orders)
+   - NANG CAO    : 5 (MoM Growth %, Revenue YTD, Product Rank RANKX,
+                      % Revenue Top 20% Customers (Pareto), Revenue Status SWITCH)
+   -> Vuot yeu cau toi thieu (>=5 DAX, >=2 nang cao).
+   ============================================================================ */
+
+
+/* ============================================================================
+   [0] CALCULATED TABLE - BANG THOI GIAN (Dim_Date)
+   Home > New table. Bam vao noi dung ben duoi.
+   Sau khi tao xong: chon bang Dim_Date > Table tools > Mark as Date Table
+   -> chon cot [Date].
+   ============================================================================ */
+
+Dim_Date =
+VAR _MinDate = DATE ( 2010, 12, 1 )
+VAR _MaxDate = DATE ( 2011, 12, 31 )
+RETURN
+ADDCOLUMNS (
+    CALENDAR ( _MinDate, _MaxDate ),
+    "Year",          YEAR ( [Date] ),
+    "MonthNo",       MONTH ( [Date] ),
+    "MonthName",     FORMAT ( [Date], "mmm" ),
+    "MonthYear",     FORMAT ( [Date], "mmm yyyy" ),
+    "YearMonth",     FORMAT ( [Date], "YYYY-MM" ),
+    "MonthYearSort", YEAR ( [Date] ) * 100 + MONTH ( [Date] ),
+    "Quarter",       "Q" & FORMAT ( [Date], "Q" ),
+    "YearQuarter",   FORMAT ( [Date], "YYYY" ) & "-Q" & FORMAT ( [Date], "Q" ),
+    "DayOfWeekNo",   WEEKDAY ( [Date], 2 ),
+    "DayName",       FORMAT ( [Date], "ddd" ),
+    "IsWeekend",     IF ( WEEKDAY ( [Date], 2 ) >= 6, TRUE (), FALSE () )
+)
+
+/* GHI CHU sau khi tao bang:
+   - Column [MonthYear] : Sort by column -> [MonthYearSort]  (de thang xep dung thu tu)
+   - Column [MonthName] : Sort by column -> [MonthNo]
+   - Column [DayName]   : Sort by column -> [DayOfWeekNo]
+*/
+
+
+/* ============================================================================
+   [PRE] 2 CALCULATED COLUMN chuan bi (tao TRONG bang Transactions_clean)
+   Table tools > New column. Can cho quan he Date va cho slicer Region.
+   ============================================================================ */
+
+/* (a) Cot ngay-thuan (bo phan gio) de noi quan he voi Dim_Date[Date].
+   InvoiceDate goc co ca gio nen khong match thang voi Dim_Date. */
+OrderDate = DATE (
+    YEAR ( Transactions_clean[InvoiceDate] ),
+    MONTH ( Transactions_clean[InvoiceDate] ),
+    DAY ( Transactions_clean[InvoiceDate] )
+)
+
+/* (b) Nhom khu vuc: tach UK vs International (dung cho slicer, theo goi y EDA muc 3.3). */
+Region =
+IF ( Transactions_clean[Country] = "United Kingdom", "UK", "International" )
+
+
+/* ============================================================================
+   [1] KPI CO BAN
+   ============================================================================ */
+
+/* Luu y: cot IsCancelled trong CSV la "True"/"False".
+   Sau khi import, dat kieu cot IsCancelled = True/False (Boolean) trong Power Query.
+   Neu Power BI hieu la Text thi doi FALSE() thanh "False" trong cac cong thuc duoi. */
+
+Total Revenue =
+CALCULATE (
+    SUM ( Transactions_clean[Revenue] ),
+    Transactions_clean[IsCancelled] = FALSE ()
+)
+
+Total Orders =
+CALCULATE (
+    DISTINCTCOUNT ( Transactions_clean[InvoiceNo] ),
+    Transactions_clean[IsCancelled] = FALSE ()
+)
+
+Total Quantity =
+CALCULATE (
+    SUM ( Transactions_clean[Quantity] ),
+    Transactions_clean[IsCancelled] = FALSE ()
+)
+
+Total Customers =
+CALCULATE (
+    DISTINCTCOUNT ( Transactions_clean[CustomerID] ),
+    Transactions_clean[IsCancelled] = FALSE (),
+    NOT ISBLANK ( Transactions_clean[CustomerID] )
+)
+
+Average Order Value =
+DIVIDE ( [Total Revenue], [Total Orders] )
+
+/* Trung vi gia tri dong giao dich - EDA muc 3.4 khuyen hien thi ben canh AOV
+   vi phan phoi lech phai manh (median 9.90 << mean 17.78). */
+Median Line Value =
+CALCULATE (
+    MEDIAN ( Transactions_clean[Revenue] ),
+    Transactions_clean[IsCancelled] = FALSE ()
+)
+
+
+/* ============================================================================
+   [2] KPI VAN HANH (chat luong don hang)
+   ============================================================================ */
+
+Cancelled Orders =
+CALCULATE (
+    DISTINCTCOUNT ( Transactions_clean[InvoiceNo] ),
+    Transactions_clean[IsCancelled] = TRUE ()
+)
+
+/* Tong so don ke ca don huy - lam mau so cho ty le huy. */
+Total Orders (All) =
+DISTINCTCOUNT ( Transactions_clean[InvoiceNo] )
+
+% Cancelled Orders =
+DIVIDE ( [Cancelled Orders], [Total Orders (All)] )
+
+
+/* ============================================================================
+   [3] KPI NANG CAO (advanced - vuot ngoai SUM/COUNT)
+   ============================================================================ */
+
+/* --- (3.1) Tang truong doanh thu thang truoc thang (MoM Growth %) ---
+   Dung time-intelligence DATEADD tren Dim_Date. Ung vien tu EDA Bieu do 1. */
+
+Revenue Previous Month =
+CALCULATE (
+    [Total Revenue],
+    DATEADD ( Dim_Date[Date], -1, MONTH )
+)
+
+Revenue MoM Growth % =
+VAR _Cur  = [Total Revenue]
+VAR _Prev = [Revenue Previous Month]
+RETURN
+IF (
+    NOT ISBLANK ( _Prev ) && _Prev <> 0,
+    DIVIDE ( _Cur - _Prev, _Prev )
+)
+
+/* --- (3.2) Doanh thu luy ke tu dau nam (YTD) --- */
+Revenue YTD =
+TOTALYTD ( [Total Revenue], Dim_Date[Date] )
+
+/* --- (3.3) Xep hang san pham theo doanh thu (RANKX) ---
+   EDA Bieu do 2. Dung cho bang Top san pham / trang Product Performance. */
+Product Rank by Revenue =
+IF (
+    HASONEVALUE ( Products_clean[Description] ),
+    RANKX (
+        ALLSELECTED ( Products_clean[Description] ),
+        [Total Revenue],
+        ,
+        DESC,
+        DENSE
+    )
+)
+
+/* --- (3.4) % doanh thu tu 20% khach hang top (Pareto) ---
+   EDA Bieu do 6. Dung TOPN de lay nhom 20% khach co doanh thu cao nhat. */
+Revenue from Top 20% Customers =
+VAR _CustCount =
+    CALCULATE (
+        DISTINCTCOUNT ( Transactions_clean[CustomerID] ),
+        NOT ISBLANK ( Transactions_clean[CustomerID] )
+    )
+VAR _TopN = ROUNDUP ( _CustCount * 0.2, 0 )
+VAR _TopCustomers =
+    TOPN (
+        _TopN,
+        VALUES ( Customers_clean[CustomerID] ),
+        [Total Revenue],
+        DESC
+    )
+RETURN
+CALCULATE ( [Total Revenue], KEEPFILTERS ( _TopCustomers ) )
+
+% Revenue from Top 20% Customers =
+DIVIDE ( [Revenue from Top 20% Customers], [Total Revenue] )
+
+/* --- (3.5) Trang thai tang truong (logic SWITCH/IF) ---
+   Dung cho card/KPI mau sac de hieu trong 10 giay. */
+Revenue Growth Status =
+VAR _g = [Revenue MoM Growth %]
+RETURN
+SWITCH (
+    TRUE (),
+    ISBLANK ( _g ),      "–",
+    _g >= 0.10,          "▲ Tang manh",
+    _g >= 0,             "▲ Tang",
+    _g >= -0.10,         "▼ Giam nhe",
+    "▼ Giam"
+)
+
+
+/* ============================================================================
+   [MODEL] SO DO QUAN HE (Model view) - STAR SCHEMA
+   ----------------------------------------------------------------------------
+   Fact  : Transactions_clean
+   Dims  : Dim_Date, Products_clean, Customers_clean
+
+   Quan he (tat ca 1 -> nhieu, huong loc Single tu Dim sang Fact):
+
+     Dim_Date[Date]            1 --- *  Transactions_clean[OrderDate]
+     Products_clean[StockCode] 1 --- *  Transactions_clean[StockCode]
+     Customers_clean[CustomerID] 1 --- * Transactions_clean[CustomerID]
+
+   LUU Y:
+   - !!! StockCode - loi trung khoa (case-insensitive) !!!
+     Power BI so sanh CHUOI KHONG phan biet HOA/thuong, nen 7 cap ma nhu
+     '15056N' vs '15056n' (cung 1 san pham) bi coi la TRUNG -> khong tao
+     duoc quan he. CACH SUA trong Power Query cho bang Products_clean:
+        (1) chon cot StockCode > Transform > Format > UPPERCASE
+        (2) Home > Remove Rows > Remove Duplicates  (1345 -> 1338 dong)
+     Nen lam UPPERCASE cho ca Transactions_clean[StockCode] cho dong nhat.
+   - Cross-filter direction: dat SINGLE (khong de Both) cho ca 3 quan he.
+   - CustomerID trong CSV dang dinh dang "15862.0". Trong Power Query nen
+     doi kieu ve Text (hoac Whole Number sau khi bo ".0") DONG NHAT ca 2 bang
+     Transactions va Customers de quan he khop.
+   - ~26% dong Fact khong co CustomerID -> se khong khop Dim_Customers (blank),
+     day la dac diem du lieu goc, khong phai loi.
+   - Country co o ca 2 bang; khi phan tich theo khu vuc dung
+     Transactions_clean[Country] / [Region] (bao phu ca giao dich khong co Customer).
+   ============================================================================ */
